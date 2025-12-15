@@ -1,0 +1,7 @@
+test-runs/data
+test-runs/__pycache__
+test-runs/results
+test-runs/results2
+test-runs/trace*
+test-runs/*.out 
+test-runs/*.csv
