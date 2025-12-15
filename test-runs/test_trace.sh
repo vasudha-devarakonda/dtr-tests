@@ -1,0 +1,2 @@
+python run_cnn.py --experiment_mode dtr --model_name resnet18  --input_idx 0 --out_file output.json --epochs 1 --batch_size 256 --memory_budget 500 > trace/resnet_18_256_600.out
+python run_cnn.py --experiment_mode dtr --model_name inceptionv4  --input_idx 0 --out_file output.json --epochs 1 --batch_size 128 --memory_budget 8000 > trace/inceptionv4_128_8000.out

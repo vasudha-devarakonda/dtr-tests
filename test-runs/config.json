@@ -1,0 +1,38 @@
+{
+  "active": true,
+  "save_logs": false,
+  "log_dest": "~/dtr_nightly_logs",
+  "sync_gpu": true,
+  "models": [
+    "resnet18"
+  ],
+  "dtr_torch_cmd": "~/dtr_venv/bin/python3",
+  "dry_run": 20,
+  "n_inputs": 1,
+  "n_reps": 100,
+  "dtr_settings": {
+      "default": {
+          "batch_size": 128,
+          "timeout" : 1200,
+          "ignore_small_tensors": true,
+          "use_sampling": true
+      },
+      "resnet18": [{
+            "type": "dtr",
+            "kind": "fixed",
+            "batch_size": 128,
+            "use_profiling": true,
+            "memory_budget": [9.0e+9],
+            "extra_params": {
+              "height": 224,
+              "width": 224
+            }
+          }
+      ]
+  },
+  "note_on_report_errors": "false = stop the experiment if a trial errors out, true = keep going in case we want to report OOMs (manually inspect what kind of error it was!",
+  "report_errors": true,
+  "set_seed": true,
+  "seed": 1,
+  "notify": []
+}

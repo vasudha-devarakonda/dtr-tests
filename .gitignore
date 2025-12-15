@@ -5,3 +5,4 @@ test-runs/results2
 test-runs/trace*
 test-runs/*.out 
 test-runs/*.csv
+*__pycache__
