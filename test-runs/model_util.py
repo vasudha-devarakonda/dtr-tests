@@ -468,6 +468,9 @@ def prepare_pythia(model_name, batch_size, use_dtr):
 
         output = model(input_ids=input_ids, labels=labels)
         logits = output.logits
+        print("\n\n=================\n\n\n")
+        print(logits.shape)
+        print("\n\n==============\n\n\n")
         loss   = output.loss
 
         process_output(logits)
