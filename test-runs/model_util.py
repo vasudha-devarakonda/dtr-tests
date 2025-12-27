@@ -431,7 +431,7 @@ def prepare_pythia(model_name, batch_size, use_dtr):
         from transformers import AutoModelForCausalLM, AutoTokenizer
         import torch
 
-        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-160m")
+        tokenizer= AutoTokenizer.from_pretrained("EleutherAI/pythia-160m")
         model = AutoModelForCausalLM.from_pretrained("EleutherAI/pythia-160m")
 
         model.cuda(0)

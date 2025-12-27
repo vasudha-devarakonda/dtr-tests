@@ -26,14 +26,16 @@ def report_results(model_name, i, out_file, use_dtr, measurements, memory_budget
                 'time': data['time']*1e3,
                 'sync_time': data['sync_time']*1e3,
                 'gpu_time': float(data['gpu_time']),
-                'input_mem': data['input_mem']*1e-6,
-                'model_mem': data['model_mem']*1e-6,
-                'total_mem': data['total_mem']*1e-6,
+                'input_mem': data['input_mem']/ (1024*1024),
+                'model_mem': data['model_mem']/ (1024*1024),
+                'total_mem': data['total_mem']/ (1024*1024),
                 'memory_budget': memory_budget,
                 'base_compute_time': data['base_compute_time']*1e-6,
                 'remat_compute_time': data['remat_compute_time']*1e-6,
                 'search_time': data['search_time']*1e-6,
-                'cost_time': data['cost_time']*1e-6
+                'cost_time': data['cost_time']*1e-6, 
+                'remat_count': data['remat_count'], 
+                'remat_size': data['remat_size']/ (1024*1024)
             }
 
             # Create writer dynamically based on entry keys
@@ -80,6 +82,8 @@ def run_measurements( i, model_name,
         Returns a dict of measurements
         """
         torch.cuda.reset_max_memory_allocated()
+        remate_count_previous = torch.remat_compute_count() 
+        remate_size_previous = torch.remat_compute_size()
         # resetting means the count should be reset to
         # only what's in scope, meaning only the input
         input_mem = torch.cuda.max_memory_allocated()
@@ -117,6 +121,8 @@ def run_measurements( i, model_name,
         remat_compute_time = torch.remat_compute_time()
         search_time = torch.search_time()
         cost_time = torch.cost_time()
+        remate_count = torch.remat_compute_count() 
+        remate_size = torch.remat_compute_size()
         total_mem = torch.cuda.max_memory_allocated()
         teardown(*model)
         torch.cuda.reset_max_memory_allocated()
@@ -139,6 +145,8 @@ def run_measurements( i, model_name,
             'remat_compute_time': remat_compute_time,
             'search_time': search_time,
             'cost_time': cost_time, 
+            'remat_count': remate_count - remate_count_previous, 
+            'remat_size': remate_size - remate_size_previous,
             'epoch': e
         }
         if use_dtr:
@@ -217,11 +225,12 @@ def main(experiment_mode, model_name, input_idx, out_file, epochs, batch_size,me
     print(model_name, out_file )
     epochs = int(epochs)
     use_dtr = (experiment_mode == 'dtr')
+    print("memory budget is: ")
+    print(float(memory_budget))
     i = 1
-    memory_budget = int(memory_budget) *1024*1024
+    memory_budget = int(float(memory_budget) *1024*1024)
     cwd = os.getcwd()
     batch_size = int(batch_size)
-    print(f"memory budget is {memory_budget} and batch size is {batch_size}")
     training_loader, num_classes_train = get_training_dataloader(
     settings.CIFAR100_TRAIN_MEAN,
     settings.CIFAR100_TRAIN_STD,
