@@ -15,7 +15,7 @@ from torch_models import densenet_bc
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import torch_models.pytorch_resnet_cifar10.resnet as rn
-
+import torch.optim as optim
 # relative because these assume they are being called from an experiment's subdirectory
 WLM_DATA_PATH = '../../shared/torch_models/word_language_model/data/wikitext-2'
 
@@ -138,6 +138,7 @@ def prepare_vision_cnn(stem, model_name, batch_size, use_dtr=False):
 
     def run_model(criterion, model, data, target,
                   process_model=identity, process_output=identity, process_loss=identity, optimizer=None):
+        optimizer = optim.SGD(model.parameters(), 0.1, momentum=0.9, weight_decay=5e-4)
         process_model(model)
         # time.sleep(20)
         if use_dtr:
@@ -513,7 +514,8 @@ def prepare_googlenet(model_name, batch_size, use_dtr):
         return [model]
 
     def run_model(criterion, model, data, target,
-                  process_model=identity, process_output=identity, process_loss=identity, optimizer=None):
+                  process_model=identity, process_output=identity, process_loss=identity, optimizer=None, lr=0.1):
+        optimizer = optim.SGD(model.parameters(), 0.1, momentum=0.9, weight_decay=5e-4)
         process_model(model)
         if use_dtr:
             data = data.checkpoint()
@@ -564,6 +566,7 @@ def prepare_inception(model_name, batch_size, use_dtr):
 
     def run_model(criterion, model, data, target,
                   process_model=identity, process_output=identity, process_loss=identity, optimizer=None):
+        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
         process_model(model)
         if use_dtr:
             data = data.checkpoint()
@@ -668,6 +671,7 @@ def prepare_unet(batch_size, use_dtr):
 
     def run_model(criterion, model, data, target,
                   process_model=identity, process_output=identity, process_loss=identity, optimizer=None):
+        optimizer = optim.SGD(model.parameters(), 0.1, momentum=0.9, weight_decay=5e-4)
         process_model(model)
         if use_dtr:
             data = data.checkpoint()

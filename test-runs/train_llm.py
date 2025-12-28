@@ -31,7 +31,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = False
 torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True)
-
+identity = lambda x: x
 
 class ForwardWrapper(torch.nn.Module):
     def __init__(self, model):
@@ -113,20 +113,150 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-def prepare_model(model_name):
-    model = AutoModelForCausalLM.from_pretrained(model_name) 
-    model.cuda(0)
-    model.train()
-    model.zero_grad()
-    model._apply(lambda v: v.detach().checkpoint())
-    return [model]
+
+def prepare_llm(model_name, batch_size, use_dtr=True):
+    """
+    Returns model + tokenizer, but run_model expects data/target already as input_ids tensors.
+    Uses LM loss only.
+    """
+
+    def prepare_llm(extra_params=None):
+        model = AutoModelForCausalLM.from_pretrained(model_name) 
+        model.cuda(0)
+        model.train()
+        model.zero_grad()
+        model._apply(lambda v: v.detach().checkpoint())
+        return [model]
+
+    def run_model(model, data, target,
+                  process_model=identity,
+                  process_output=identity,
+                  process_loss=identity,
+                  optimizer=None):
+        optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
+        process_model(model)
+        input_ids = data.cuda(0)
+        labels    = target.cuda(0)
+
+        input_ids = input_ids.checkpoint()
+        labels    = labels.checkpoint()
+
+        output = model(input_ids=input_ids, labels=labels)
+        logits = output.logits
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
+    
+        loss = torch.nn.functional.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+        )
+
+        process_output(logits)
+        process_loss(loss)
+
+        optimizer.zero_grad()
+
+        torch.annotate_log("BACKWARD")
+
+        loss.backward()
+
+        input_ids = input_ids.decheckpoint()
+        labels    = labels.decheckpoint()
+        loss      = loss.decheckpoint()
+        logits = logits.decheckpoint()
+
+        optimizer.step()
+
+        del input_ids, labels, loss, output
+
+    def teardown(model_list):
+        pass
+
+    return prepare_llm, run_model, teardown
+
+def run_single_measurement(model_name, produce_model, run_model, teardown, inp,
+                             use_dtr,  e, batch_size, memory_budget):
+    use_dtr = True
+    torch.cuda.reset_max_memory_allocated()
+    remate_count_previous = torch.remat_compute_count() 
+    remate_size_previous = torch.remat_compute_size()
+    # resetting means the count should be reset to
+    # only what's in scope, meaning only the input
+    start_time_model = time.time()
+    input_mem = torch.cuda.max_memory_allocated()
+    model = produce_model(extra_params=[])
+    params = []
+    for m in model:
+        if hasattr(m, 'parameters'):
+            params.extend(m.parameters())
+
+    model_mem = torch.cuda.max_memory_allocated()
+
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+
+
+    torch.cuda.synchronize()
+    start_time = time.time()
+    if use_dtr:
+        torch.reset_profile()
+    start.record()
+    # with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    run_model(*model, *inp)
+    end.record()
+    start_sync = time.time()
+    torch.cuda.synchronize()
+    end_sync = time.time()
+    end_time = time.time()
+    # end timing
+
+    if use_dtr:
+        # operators-only time, tracked by DTR
+        cuda_time = torch.compute_time()
+
+    base_compute_time = torch.base_compute_time()
+    remat_compute_time = torch.remat_compute_time()
+    search_time = torch.search_time()
+    cost_time = torch.cost_time()
+    remate_count = torch.remat_compute_count() 
+    remate_size = torch.remat_compute_size()
+    total_mem = torch.cuda.max_memory_allocated()
+    teardown(*model)
+    torch.cuda.reset_max_memory_allocated()
+
+    del model
+
+    if use_dtr:
+        torch.toggle_log(False)
+
+    del params
+
+    result = {
+        'time': end_time - start_time,
+        'time_with_model': end_time - start_time_model,
+        'sync_time': end_sync - start_sync,
+        'gpu_time': start.elapsed_time(end),
+        'input_mem': input_mem,
+        'model_mem': model_mem,
+        'total_mem': total_mem,
+        'base_compute_time': base_compute_time,
+        'remat_compute_time': remat_compute_time,
+        'search_time': search_time,
+        'cost_time': cost_time, 
+        'remat_count': remate_count - remate_count_previous, 
+        'remat_size': remate_size - remate_size_previous,
+        'epoch': e
+    }
+    if use_dtr:
+        result['cuda_time'] = cuda_time
+    else:
+        result['cuda_time'] = -1.0
+    return result
 
 def train_loop(model_name, train_dataset, batch_size, epochs, use_dtr=True):
     dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
-    
+    produce_model, run_model, teardown = prepare_llm(model_name,batch_size,use_dtr=True)
     num_iters = min(len(dataloader), args.iter_limit) if args.iter_limit != -1 else len(dataloader)
-
-
     results = []
     i_no = 0
     start_total_epoch = time.time()
@@ -134,82 +264,28 @@ def train_loop(model_name, train_dataset, batch_size, epochs, use_dtr=True):
         print(f"Epoch {epoch+1}/{epochs}")
         progress_bar = tqdm(total=num_iters, desc=f"Training Epoch {epoch}", leave=False)
         for step, batch in enumerate(dataloader):
+            gc.collect()
             if step >= num_iters - 1:
                 break
             torch.cuda.reset_max_memory_allocated()
             start_time_with_model = time.time()
             remate_count_previous = torch.remat_compute_count() 
             remate_size_previous = torch.remat_compute_size()
-            model = prepare_model(model_name)    
-            end_time_model = time.time()
-            model_mem = torch.cuda.max_memory_allocated()
-            params = []
-            for m in model:
-                if hasattr(m, 'parameters'):
-                    params.extend(m.parameters())
-            optimizer = torch.optim.AdamW(params, lr=5e-5)
+            # params = []
+            # for m in model:
+            #     if hasattr(m, 'parameters'):
+            #         params.extend(m.parameters())
             start_time = time.time()
             batch = {k: v.to(device) for k, v in batch.items()}
             tensor = batch['input_ids']
             labels = tensor
-            tensor = tensor.checkpoint()
-            labels = labels.checkpoint()
-            # Forward pass
-            outputs = model[0](tensor, labels=labels)
-            logits = outputs.logits
-            shift_logits = logits[:, :-1, :].contiguous()
-            shift_labels = labels[:, 1:].contiguous()
-            
-            # Compute loss
-            loss = torch.nn.functional.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1),
-            )
-            
-            optimizer.zero_grad()
-            loss.backward()
-            
-            # 4. **Decheckpoint after backward pass**
-            tensor = tensor.decheckpoint()
-            loss = loss.decheckpoint()
-            labels = labels.decheckpoint()
-            logits = logits.decheckpoint()
-
-
-            optimizer.step()
+            tensor = tensor.cuda(0)
+            labels = labels.cuda(0)
+            inp = (tensor, labels)
+            result = run_single_measurement(model_name, produce_model, run_model, teardown,
+                                                inp, use_dtr,epoch, batch_size, memory_budget)
             progress_bar.update(1)
-            end_time = time.time()
-            total_mem = torch.cuda.max_memory_allocated()
-            base_compute_time = torch.base_compute_time() 
-            remat_compute_time = torch.remat_compute_time() 
-            search_time = torch.search_time() 
-            cost_time = torch.cost_time() 
-            remate_count = torch.remat_compute_count() 
-            remate_size = torch.remat_compute_size()
-            result = {
-                'time': end_time - start_time,
-                'time_with_model': end_time_model - start_time_with_model,
-                'iter': step,
-                'total_mem': total_mem,
-                'model_mem': model_mem,
-                'base_compute_time': base_compute_time,
-                'remat_compute_time': remat_compute_time,
-                'search_time': search_time,
-                'cost_time': cost_time, 
-                'remat_count': remate_count - remate_count_previous, 
-                'remat_size': remate_size - remate_size_previous,
-                'epoch': epoch
-            }
-            i_no += 1
             results.append(result)
-            del tensor, labels, loss, outputs
-            torch.toggle_log(False)
-            teardown(*model)
-            del model
-            del params
-
-
-
         progress_bar.close()
     finish_epoch = time.time()
     time_taken_epoch = finish_epoch - start_total_epoch
@@ -263,14 +339,15 @@ def report_results(model_name, measurements, memory_budget, batch_size):
                 'time': data['time']*1e3,
                 'time_with_model': data['time_with_model']*1e3,
                 'total_mem': data['total_mem']/(1024*1024),
-                'model_mem': data['model_mem']/(1024*1024),
                 'memory_budget': memory_budget/ (1024*1024),
                 'base_compute_time': data['base_compute_time']*1e-6,
                 'remat_compute_time': data['remat_compute_time']*1e-6,
                 'search_time': data['search_time']*1e-6,
                 'cost_time': data['cost_time']*1e-6,
                 'remat_count': data['remat_count'],
-                'remat_size': data['remat_size']/(1024*1024)
+                'remat_size': data['remat_size']/(1024*1024), 
+                'model_mem': data['model_mem']/(1024*1024),
+                'input_mem': data['input_mem']/(1024*1024)
             }
 
             # Create writer dynamically based on entry keys

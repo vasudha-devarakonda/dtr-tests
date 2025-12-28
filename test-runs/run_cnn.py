@@ -24,10 +24,9 @@ def report_results(model_name, i, out_file, use_dtr, measurements, memory_budget
                 'rep': j,
                 'epoch': data['epoch'],
                 'time': data['time']*1e3,
+                'time_with_model':  data['time_with_model']*1e3,
                 'sync_time': data['sync_time']*1e3,
                 'gpu_time': float(data['gpu_time']),
-                'input_mem': data['input_mem']/ (1024*1024),
-                'model_mem': data['model_mem']/ (1024*1024),
                 'total_mem': data['total_mem']/ (1024*1024),
                 'memory_budget': memory_budget,
                 'base_compute_time': data['base_compute_time']*1e-6,
@@ -35,7 +34,9 @@ def report_results(model_name, i, out_file, use_dtr, measurements, memory_budget
                 'search_time': data['search_time']*1e-6,
                 'cost_time': data['cost_time']*1e-6, 
                 'remat_count': data['remat_count'], 
-                'remat_size': data['remat_size']/ (1024*1024)
+                'remat_size': data['remat_size']/ (1024*1024),
+                'input_mem': data['input_mem']/ (1024*1024),
+                'model_mem': data['model_mem']/ (1024*1024)
             }
 
             # Create writer dynamically based on entry keys
@@ -86,6 +87,7 @@ def run_measurements( i, model_name,
         remate_size_previous = torch.remat_compute_size()
         # resetting means the count should be reset to
         # only what's in scope, meaning only the input
+        start_time_model = time.time()
         input_mem = torch.cuda.max_memory_allocated()
         model = produce_model(extra_params=[])
         params = []
@@ -136,6 +138,7 @@ def run_measurements( i, model_name,
 
         result = {
             'time': end_time - start_time,
+            'time_with_model': end_time - start_time_model,
             'sync_time': end_sync - start_sync,
             'gpu_time': start.elapsed_time(end),
             'input_mem': input_mem,
@@ -178,8 +181,9 @@ def run_measurements( i, model_name,
             shuffle=True,
             name='cifar100'
         )
+        start_total = time.time()
         for e in range(epochs):
-            iter_limit = -1
+            iter_limit = 2
             num_iters = min(len(training_loader), iter_limit) if iter_limit != -1 else len(training_loader)
             progress =  tqdm(total=num_iters, desc=f"Training Epoch {e}", leave=False)
             for j, (inputs, labels) in enumerate(training_loader):
@@ -195,6 +199,13 @@ def run_measurements( i, model_name,
     
                 if j >= num_iters-1: 
                     break
+        finish_time_total = time.time() - start_total
+        file_name = f"cnn_models_time.txt"
+
+        # Open the file in append mode and save the time for this epoch
+        with open(file_name, 'a') as file:
+            file.write(f"Model:  {model_name}: {finish_time_total:.2f}s\n")
+        torch.cuda.empty_cache()
         return results_queue
 
 
