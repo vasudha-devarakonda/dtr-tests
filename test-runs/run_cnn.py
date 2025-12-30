@@ -183,7 +183,7 @@ def run_measurements( i, model_name,
         )
         start_total = time.time()
         for e in range(epochs):
-            iter_limit = 2
+            iter_limit = -1
             num_iters = min(len(training_loader), iter_limit) if iter_limit != -1 else len(training_loader)
             progress =  tqdm(total=num_iters, desc=f"Training Epoch {e}", leave=False)
             for j, (inputs, labels) in enumerate(training_loader):

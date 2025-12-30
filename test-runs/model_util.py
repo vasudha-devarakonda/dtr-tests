@@ -140,7 +140,6 @@ def prepare_vision_cnn(stem, model_name, batch_size, use_dtr=False):
                   process_model=identity, process_output=identity, process_loss=identity, optimizer=None):
         optimizer = optim.SGD(model.parameters(), 0.1, momentum=0.9, weight_decay=5e-4)
         process_model(model)
-        # time.sleep(20)
         if use_dtr:
             data = data.checkpoint()
             target = target.checkpoint()
@@ -566,7 +565,7 @@ def prepare_inception(model_name, batch_size, use_dtr):
 
     def run_model(criterion, model, data, target,
                   process_model=identity, process_output=identity, process_loss=identity, optimizer=None):
-        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+        optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
         process_model(model)
         if use_dtr:
             data = data.checkpoint()

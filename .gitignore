@@ -1,8 +1,8 @@
 test-runs/data
 test-runs/__pycache__
-test-runs/results
-test-runs/results2
+test-runs/*result*
 test-runs/trace*
 test-runs/*.out 
 test-runs/*.csv
 *__pycache__
+test-runs/*.txt
