@@ -11,36 +11,51 @@ def process_csv_files(input_folder, output_file="llm-results/summary-llm.csv"):
     # Loop through each CSV file
     for file in csv_files:
         df = pd.read_csv(file)
-
+# model_name,batch_size,rep,epoch,time,time_with_model,total_mem,memory_budget,base_compute_time,remat_compute_time,search_time,cost_time,remat_count,remat_size,model_mem,input_mem
         # Extract general information (from first row of the DataFrame)
         model_name = df["model_name"].iloc[0]
         batch_size = df["batch_size"].iloc[0]
-        memory_budget = df["memory_budget"].iloc[0] / (1024 * 1024)  # Convert memory budget to MB
+        memory_budget = df["memory_budget"].iloc[0]   # Convert memory budget to MB if needed
 
-        # Loop through each row to process data and calculate metrics
-        for j, data in df.iterrows():
-            # Create an entry for each row (rep, epoch, etc.)
-            entry = {
-                'model_name': model_name,
-                'batch_size': batch_size,
-                'rep': j,  # This is the index, or if you have another column for 'rep', you can replace it
-                'epoch': data['epoch'],
-                'time': data['time'] * 1e3,  # Convert time from seconds to milliseconds
-                'time_with_model': data['time_with_model'] * 1e3,  # Convert time from seconds to milliseconds
-                'total_mem': data['total_mem'] / (1024 * 1024),  # Convert total_mem from bytes to MB
-                'memory_budget': memory_budget,  # Memory budget already in MB
-                'base_compute_time': data['base_compute_time'] * 1e-6,  # Convert microseconds to seconds
-                'remat_compute_time': data['remat_compute_time'] * 1e-6,  # Convert microseconds to seconds
-                'search_time': data['search_time'] * 1e-6,  # Convert microseconds to seconds
-                'cost_time': data['cost_time'] * 1e-6,  # Convert microseconds to seconds
-                'remat_count': data['remat_count'],  # Remat count (integer)
-                'remat_size': data['remat_size'] / (1024 * 1024),  # Convert remat_size from bytes to MB
-                'model_mem': data['model_mem'] / (1024 * 1024),  # Convert model_mem from bytes to MB
-                'input_mem': data['input_mem'] / (1024 * 1024)  # Convert input_mem from bytes to MB
-            }
+        # Calculate total time in seconds (assuming time is in milliseconds)
+        total_time_sec = df["time"].sum() / 1000.0
+        total_time_with_model_sec = df["time_with_model"].sum() / 1000.0
 
-            # Append the entry to the summary rows
-            summary_rows.append(entry)
+        total_remat_compute_time_sec = df["remat_compute_time"].sum() / 1000.0
+        total_search_time_sec = df["search_time"].sum() / 1000.0
+        total_cost_time_sec = df["cost_time"].sum() / 1000.0
+        total_search_time_sec = df["search_time"].sum() / 1000.0
+        # Use memory values directly (no conversion to MB needed)
+        total_mem_mb = df["total_mem"].mean()  # Already in MB
+        input_mem_mb = df["input_mem"].mean()  # Already in MB
+        model_mem_mb = df["model_mem"].mean()  # Already in MB
+
+        # Count the number of unique repetitions and epochs
+        num_reps = df["rep"].nunique()
+        num_epochs = df["epoch"].nunique()
+        num_iterations = num_reps / num_epochs if num_epochs != 0 else None
+
+        # Calculate the total number of remat counts and remat size in MB (remat_size already in MB)
+        total_remat_count = df["remat_count"].sum()
+        total_remat_size_mb = df["remat_size"].sum()  # Already in MB
+
+        # Append a summary row with the calculated metrics
+        summary_rows.append({
+            "model_name": model_name,
+            "batch_size": batch_size,
+            "num_iterations": num_iterations,
+            "total_time_sec": total_time_sec,
+            "total_time_with_model_sec": total_time_with_model_sec,
+            "total_remat_compute_time_sec": total_remat_compute_time_sec,
+            "total_search_time_sec": total_search_time_sec,
+            "total_cost_time_sec": total_cost_time_sec,
+            "memory_budget_MB": memory_budget,
+            "avg_total_mem_MB": total_mem_mb,
+            "avg_input_mem_MB": input_mem_mb,
+            "avg_model_mem_MB": model_mem_mb,
+            "total_remat_count": total_remat_count,
+            "total_remat_size_MB": total_remat_size_mb,
+        })
 
     # Create a DataFrame from the summary rows
     summary_df = pd.DataFrame(summary_rows)

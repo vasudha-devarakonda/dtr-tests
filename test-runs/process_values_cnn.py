@@ -2,7 +2,7 @@ import pandas as pd
 import glob
 import os
 
-def process_csv_files(input_folder, output_file="cnn-results/summary-cnn.csv"):
+def process_csv_files(input_folder, output_file="cnn-results-2/summary-cnn.csv"):
     summary_rows = []
 
     # Get all CSV files in the input folder
@@ -74,4 +74,4 @@ def process_csv_files(input_folder, output_file="cnn-results/summary-cnn.csv"):
     print(f"Summary written to {output_file}")
 
 # Call the function with the input folder containing your CSV files
-process_csv_files("cnn-results")
+process_csv_files("cnn-results-2")
