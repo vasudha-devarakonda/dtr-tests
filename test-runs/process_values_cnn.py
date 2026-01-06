@@ -38,8 +38,8 @@ def process_csv_files(input_folder, output_file="cnn-results-2/summary-cnn.csv")
         num_iterations = num_reps / num_epochs if num_epochs != 0 else None
 
         # Calculate the total number of remat counts and remat size in MB (remat_size already in MB)
-        total_remat_count = df["remat_count"].sum()
-        total_remat_size_mb = df["remat_size"].sum()  # Already in MB
+        total_remat_count = df["remat_count"].mean()
+        total_remat_size_mb = df["remat_size"].mean()  # Already in MB
 
         # Append a summary row with the calculated metrics
         summary_rows.append({
@@ -55,11 +55,11 @@ def process_csv_files(input_folder, output_file="cnn-results-2/summary-cnn.csv")
             "total_search_time_sec": total_search_time_sec,
             "total_cost_time_sec": total_cost_time_sec,
             "memory_budget_MB": memory_budget,
-            "avg_total_mem_MB": total_mem_mb,
+            "avg_peak_mem_MB": total_mem_mb,
             "avg_input_mem_MB": input_mem_mb,
             "avg_model_mem_MB": model_mem_mb,
-            "total_remat_count": total_remat_count,
-            "total_remat_size_MB": total_remat_size_mb,
+            "mean_remat_count": total_remat_count,
+            "mean_remat_size_MB": total_remat_size_mb,
         })
 
     # Create a DataFrame from the summary rows

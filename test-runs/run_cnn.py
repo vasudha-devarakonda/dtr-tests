@@ -17,6 +17,7 @@ def report_results(model_name, i, out_file, use_dtr, measurements, memory_budget
         return  # nothing to write
     out_file_name = f"{model_name}_{batch_size}_{int(memory_budget/(1024*1024))}.csv"
     with open(out_file_name, 'a', newline='') as csvfile:
+        # https://github.com/uwsampl/dtr-prototype/blob/master/dtr_code/shared/run_torch_trial.py
         for j, data in enumerate(measurements):
             entry = {
                 'model_name': model_name,
@@ -89,6 +90,17 @@ def run_measurements( i, model_name,
         # only what's in scope, meaning only the input
         start_time_model = time.time()
         input_mem = torch.cuda.max_memory_allocated()
+'''
+        This function initializes a model and performs
+        a single measurement of the model on the given input.
+
+        While it might seem most reasonable to initialize
+        the model outside of the loop, DTR's logs have shown
+        that certain constants in the model persist between loop iterations;
+        performing these actions in a separate function scope turned out to be the only
+        way to prevent having those constants hang around.
+        https://github.com/uwsampl/dtr-prototype/blob/eff53cc4804cc7d6246a6e5086861ce2b846f62b/dtr_code/shared/run_torch_trial.py#L178C1-L185C59
+'''
         model = produce_model(extra_params=[])
         params = []
         for m in model:
